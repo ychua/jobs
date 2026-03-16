@@ -1,46 +1,63 @@
-# US Job Market Visualizer
+# Australian Job Market Visualiser
 
-A research tool for visually exploring Bureau of Labor Statistics [Occupational Outlook Handbook](https://www.bls.gov/ooh/) data. This is not a report, a paper, or a serious economic publication — it is a development tool for exploring BLS data visually.
+An Australian adaptation of [Andrej Karpathy's US Job Market Visualizer](https://github.com/karpathy/jobs), rebuilt with real Australian labour market data from government sources.
 
-**Live demo: [karpathy.ai/jobs](https://karpathy.ai/jobs/)**
+**[View the live visualisation](https://ychua.github.io/jobs/)**
+
+## What was adapted
+
+The original repo scraped US Bureau of Labor Statistics (BLS) occupation data, scored AI exposure via an LLM, and rendered an interactive treemap. This fork replaces the entire data pipeline with Australian equivalents:
+
+| Original (US) | Adapted (Australia) |
+|---|---|
+| Bureau of Labor Statistics (BLS) | Jobs and Skills Australia (JSA) |
+| SOC occupation codes | ANZSCO 4-digit unit groups (361 occupations) |
+| USD pay figures | AUD median weekly full-time earnings x 52 |
+| US degree classifications | Australian Qualifications Framework (AQF) |
+| BLS 10-year employment projections | JSA/Victoria University **5-year** projections |
+| 143M total employment | 14.4M total employment |
+| 24% of jobs in declining occupations | 5% of jobs in declining occupations |
 
 ## What's here
 
-The BLS OOH covers **342 occupations** spanning every sector of the US economy, with detailed data on job duties, work environment, education requirements, pay, and employment projections. We scraped all of it and built an interactive treemap visualization where each rectangle's **area** is proportional to total employment and **color** shows the selected metric — toggle between BLS projected growth outlook, median pay, education requirements, and AI exposure.
+An interactive treemap where each rectangle's **area** is proportional to total employment and **colour** shows the selected metric — toggle between projected growth outlook, median pay, education requirements, and AI exposure. Click any tile to view its full JSA profile.
 
-## LLM-powered coloring
+## Data sources
 
-The repo includes scrapers, parsers, and a pipeline for writing custom LLM prompts to score and color occupations by any criteria. You write a prompt, the LLM scores each occupation, and the treemap colors accordingly. The "Digital AI Exposure" layer is one example — it estimates how much current AI (which is primarily digital) will reshape each occupation. But you could write a different prompt for any question — e.g. exposure to humanoid robotics, offshoring risk, climate impact — and re-run the pipeline to get a different coloring. See `score.py` for the prompt and scoring pipeline.
+All data is from official Australian government publications:
 
-**What "AI Exposure" is NOT:**
-- It does **not** predict that a job will disappear. Software developers score 9/10 because AI is transforming their work — but demand for software could easily *grow* as each developer becomes more productive.
-- It does **not** account for demand elasticity, latent demand, regulatory barriers, or social preferences for human workers.
-- The scores are rough LLM estimates (Gemini Flash via OpenRouter), not rigorous predictions. Many high-exposure jobs will be reshaped, not replaced.
+- **[JSA Occupation Profiles (Nov 2025)](https://www.jobsandskills.gov.au/data/occupation-and-industry-profiles)** — Employment levels, median weekly earnings, demographics, education attainment for 358 ANZSCO 4-digit occupations
+- **[JSA Employment Projections (May 2025–2035)](https://www.jobsandskills.gov.au/data/employment-projections)** — 5 and 10 year growth projections by occupation (Victoria University modelling)
+- **[ABS Employee Earnings and Hours (May 2025)](https://www.abs.gov.au/statistics/labour/earnings-and-working-conditions/employee-earnings-and-hours-australia/latest-release)** — Average weekly earnings by 4-digit occupation (DO011), used as fallback for 36 occupations missing JSA earnings
+
+The raw Excel files are in `data/`.
 
 ## Data pipeline
 
-1. **Scrape** (`scrape.py`) — Playwright (non-headless, BLS blocks bots) downloads raw HTML for all 342 occupation pages into `html/`.
-2. **Parse** (`parse_detail.py`, `process.py`) — BeautifulSoup converts raw HTML into clean Markdown files in `pages/`.
-3. **Tabulate** (`make_csv.py`) — Extracts structured fields (pay, education, job count, growth outlook, SOC code) into `occupations.csv`.
-4. **Score** (`score.py`) — Sends each occupation's Markdown description to an LLM with a scoring rubric. Each occupation gets an AI Exposure score from 0-10 with a rationale. Results saved to `scores.json`. Fork this to write your own prompts.
-5. **Build site data** (`build_site_data.py`) — Merges CSV stats and AI exposure scores into a compact `site/data.json` for the frontend.
-6. **Website** (`site/index.html`) — Interactive treemap visualization with four color layers: BLS Outlook, Median Pay, Education, and Digital AI Exposure.
+1. **Build occupation list** (`build_occupations.py`) — Scrapes the JSA occupations index to build `occupations.json` with ANZSCO codes, titles, categories, and URLs.
+2. **Scrape** (`scrape.py`) — Playwright downloads raw HTML for all occupation profile pages into `html/`.
+3. **Parse** (`parse_detail.py`, `process.py`) — BeautifulSoup converts raw HTML into clean Markdown files in `pages/`.
+4. **Tabulate** (`make_csv.py`) — Extracts structured fields into `occupations.csv`.
+5. **Score** (`score.py`) — Sends each occupation's Markdown description to an LLM with a scoring rubric (0–10 AI exposure). Results saved to `scores.json`.
+6. **Build site data** (`build_real_data.py`) — Parses the JSA and ABS Excel files directly and merges with AI exposure scores into `site/data.json`.
+7. **Website** (`index.html`) — Interactive treemap with four colour layers: Growth Outlook, Median Pay, Education, and Digital AI Exposure.
+
+## LLM-powered colouring
+
+The "Digital AI Exposure" layer estimates how much current AI will reshape each occupation. But you could write a different prompt for any question — e.g. exposure to humanoid robotics, offshoring risk, climate impact — and re-run the pipeline. See `score.py` for the prompt and scoring pipeline.
+
+**Caveat:** These are rough LLM estimates, not rigorous predictions. A high score does not predict a job will disappear. Software developers score 9/10 because AI is transforming their work — but demand could easily *grow* as productivity increases. The scores do not account for demand elasticity, latent demand, regulatory barriers, or social preferences for human workers.
 
 ## Key files
 
 | File | Description |
 |------|-------------|
-| `occupations.json` | Master list of 342 occupations with title, URL, category, slug |
-| `occupations.csv` | Summary stats: pay, education, job count, growth projections |
-| `scores.json` | AI exposure scores (0-10) with rationales for all 342 occupations |
-| `prompt.md` | All data in a single file, designed to be pasted into an LLM for analysis |
-| `html/` | Raw HTML pages from BLS (source of truth, ~40MB) |
-| `pages/` | Clean Markdown versions of each occupation page |
-| `site/` | Static website (treemap visualization) |
-
-## LLM prompt
-
-[`prompt.md`](prompt.md) packages all the data — aggregate statistics, tier breakdowns, exposure by pay/education, BLS growth projections, and all 342 occupations with their scores and rationales — into a single file (~45K tokens) designed to be pasted into an LLM. This lets you have a data-grounded conversation about AI's impact on the job market without needing to run any code. Regenerate it with `uv run python make_prompt.py`.
+| `build_real_data.py` | Parses government Excel files into `site/data.json` |
+| `occupations.json` | Master list of 361 ANZSCO 4-digit occupations |
+| `scores.json` | AI exposure scores (0–10) with rationales |
+| `data/` | Raw government Excel data files (JSA, ABS) |
+| `site/` | Static website (treemap visualisation) |
+| `index.html` | Treemap (also at repo root for GitHub Pages) |
 
 ## Setup
 
@@ -49,7 +66,7 @@ uv sync
 uv run playwright install chromium
 ```
 
-Requires an OpenRouter API key in `.env`:
+Requires an OpenRouter API key in `.env` for AI exposure scoring:
 ```
 OPENROUTER_API_KEY=your_key_here
 ```
@@ -57,21 +74,35 @@ OPENROUTER_API_KEY=your_key_here
 ## Usage
 
 ```bash
-# Scrape BLS pages (only needed once, results are cached in html/)
-uv run python scrape.py
-
-# Generate Markdown from HTML
-uv run python process.py
-
-# Generate CSV summary
-uv run python make_csv.py
-
-# Score AI exposure (uses OpenRouter API)
-uv run python score.py
-
-# Build website data
-uv run python build_site_data.py
+# Build site data from government Excel files (no API needed)
+python build_real_data.py
 
 # Serve the site locally
 cd site && python -m http.server 8000
+
+# Or re-run the full pipeline from scratch:
+uv run python build_occupations.py   # build occupation list
+uv run python scrape.py              # scrape JSA pages
+uv run python process.py             # parse HTML to Markdown
+uv run python make_csv.py            # generate CSV
+uv run python score.py               # score AI exposure (needs API key)
+uv run python build_site_data.py     # merge into site/data.json
 ```
+
+## Methodology differences vs US version
+
+The Australian visualisation looks noticeably more optimistic than the US version. Key reasons:
+
+- **Projection horizon**: Australia uses **5-year** growth projections (May 2025–May 2030) while the US uses **10-year** BLS projections. The magnitudes are roughly comparable (+6.6% AU 5yr vs +3.4% US 10yr), but they measure different time spans.
+- **Fewer declining occupations**: Only 5% of Australian jobs are in occupations with negative 5-year growth, vs 24% for US 10-year projections. This reflects Australia's strong population growth from immigration, which sustains demand across most occupations. Even over 10 years, only 13 of 358 Australian occupations are projected to decline.
+- **The projections do not account for AI**: The JSA/Victoria University model projects employment based on historical trends, demographics, and industry structure. It does not currently reflect the potential labour market impact of generative AI adoption.
+- **Currency**: AUD pay figures are not directly comparable to USD. At current exchange rates (~0.65 USD/AUD), an Australian median of A$92K is roughly US$60K.
+- **Education system**: Australia uses the Australian Qualifications Framework (AQF) — Certificate I–IV, Diploma, Bachelor degree, etc. — rather than US degree classifications (Associate's, Bachelor's, Master's). The education groups are not directly comparable.
+- **Coverage**: 332 of 361 occupations have real earnings data (296 from JSA, 36 from ABS Employee Earnings). The remaining 29 (mostly farmers, defence, niche trades) are estimated from ANZSCO skill levels. All 361 have AI exposure scores — 332 via LLM, 29 scored manually using the same rubric.
+
+## Notes on Australian data
+
+- **Currency**: All pay figures are in Australian dollars (AUD). Median weekly full-time earnings are converted to annual by multiplying by 52.
+- **Classification**: ANZSCO (Australian and New Zealand Standard Classification of Occupations) 4-digit unit groups. 8 major groups: Managers, Professionals, Technicians & Trades, Community & Personal Service, Clerical & Admin, Sales, Machinery Operators & Drivers, Labourers.
+- **Employment projections**: JSA / Victoria University Employment Forecasting model (May 2025–May 2035). These do not currently reflect the labour market implications of generative AI adoption.
+- **Education**: Uses the Australian Qualifications Framework (AQF) — from Year 10 through Doctoral degree — rather than US degree classifications.
